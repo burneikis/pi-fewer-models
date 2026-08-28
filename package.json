@@ -1,0 +1,11 @@
+{
+	"name": "pi-fewer-models",
+	"version": "0.1.0",
+	"description": "Filter pi's model catalogue: provider scoping, allow/deny globs",
+	"license": "MIT",
+	"type": "module",
+	"pi": {
+		"extensions": ["./src/index.ts"]
+	},
+	"files": ["src"]
+}
