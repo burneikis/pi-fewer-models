@@ -19,12 +19,20 @@ export interface FewerModelsConfig {
 	keepCurrentModel?: boolean;
 	/** Drop models whose provider has no usable credentials. */
 	requireAuth?: boolean;
+	/** Keep only the newest version(s) of each model family (haiku-4-5 wins over haiku-4). */
+	hideOldModels?: boolean;
+	/** How many versions per family to keep when `hideOldModels` is on. Default 1. */
+	keepVersions?: number;
+	/** Model globs that are never treated as old. */
+	keepAlways?: string[];
 }
 
 export const DEFAULT_CONFIG: FewerModelsConfig = {
 	enabled: true,
 	keepCurrentModel: true,
 	requireAuth: false,
+	hideOldModels: false,
+	keepVersions: 1,
 };
 
 export interface LoadedConfig {
@@ -109,4 +117,91 @@ export function isModelKept(model: ModelIdentity, config: FewerModelsConfig): bo
 	if (config.allow?.length && !matchesAny([qualified, id], config.allow)) return false;
 	if (matchesAny([qualified, id], config.deny)) return false;
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Old-version pruning
+// ---------------------------------------------------------------------------
+
+interface ParsedModelId {
+	/** Everything that is not a version number, e.g. `claude-haiku` for `claude-haiku-4-5`. */
+	family: string;
+	/** Version components in order, e.g. `[4, 5]` for `claude-haiku-4-5` and `claude-haiku-4.5`. */
+	version: number[];
+	/** True when the id carries a release date such as `-20251001`. */
+	dated: boolean;
+}
+
+/** Split a model id into a family name, a version tuple, and a date marker. */
+export function parseModelId(id: string): ParsedModelId {
+	const words: string[] = [];
+	const version: number[] = [];
+	let dated = false;
+
+	for (const token of id.split(/[-_\s]+/)) {
+		if (/^\d{6,}$/.test(token)) {
+			dated = true;
+			continue;
+		}
+		if (/^v?\d+(\.\d+)*$/i.test(token)) {
+			for (const part of token.replace(/^v/i, "").split(".")) version.push(Number(part));
+			continue;
+		}
+		words.push(token.toLowerCase());
+	}
+
+	return { family: words.join("-"), version, dated };
+}
+
+function compareVersions(a: number[], b: number[]): number {
+	const length = Math.max(a.length, b.length);
+	for (let i = 0; i < length; i++) {
+		const diff = (a[i] ?? -1) - (b[i] ?? -1);
+		if (diff !== 0) return diff;
+	}
+	return 0;
+}
+
+/**
+ * Keep only the newest `keepVersions` releases per model family.
+ * Undated ids win over dated ones at the same version (`haiku-4-5` over `haiku-4-5-20251001`).
+ */
+export function pruneOldModels<T extends ModelIdentity>(models: T[], config: FewerModelsConfig): T[] {
+	if (!config.hideOldModels) return models;
+	const keepVersions = Math.max(1, config.keepVersions ?? 1);
+
+	const families = new Map<string, { model: T; parsed: ParsedModelId }[]>();
+	const exempt: T[] = [];
+
+	for (const model of models) {
+		if (matchesAny([`${model.provider}/${model.id}`, model.id], config.keepAlways)) {
+			exempt.push(model);
+			continue;
+		}
+		const parsed = parseModelId(model.id);
+		if (parsed.version.length === 0) {
+			exempt.push(model);
+			continue;
+		}
+		const key = `${model.provider}\u0000${parsed.family}`;
+		const bucket = families.get(key) ?? [];
+		bucket.push({ model, parsed });
+		families.set(key, bucket);
+	}
+
+	const kept = new Set<T>(exempt);
+	for (const bucket of families.values()) {
+		const versions = [...new Set(bucket.map((entry) => entry.parsed.version.join(".")))]
+			.map((key) => key.split(".").map(Number))
+			.sort((a, b) => compareVersions(b, a))
+			.slice(0, keepVersions);
+
+		for (const version of versions) {
+			const sameVersion = bucket.filter((entry) => compareVersions(entry.parsed.version, version) === 0);
+			const undated = sameVersion.filter((entry) => !entry.parsed.dated);
+			for (const entry of undated.length > 0 ? undated : sameVersion) kept.add(entry.model);
+		}
+	}
+
+	return models.filter((model) => kept.has(model));
 }

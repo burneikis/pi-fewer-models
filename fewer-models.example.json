@@ -1,9 +1,29 @@
 {
 	"enabled": true,
-	"providers": ["anthropic", "openai", "google", "zai*"],
-	"excludeProviders": ["openrouter"],
-	"allow": ["anthropic/claude-*-4-*", "gpt-5*", "gemini-2.5-*"],
-	"deny": ["*-nano", "*-0125", "anthropic/claude-3-*"],
+	"providers": [
+		"anthropic",
+		"openai",
+		"google",
+		"zai*"
+	],
+	"excludeProviders": [
+		"openrouter"
+	],
+	"allow": [
+		"anthropic/claude-*-4-*",
+		"gpt-5*",
+		"gemini-2.5-*"
+	],
+	"deny": [
+		"*-nano",
+		"*-0125",
+		"anthropic/claude-3-*"
+	],
 	"keepCurrentModel": true,
-	"requireAuth": false
+	"requireAuth": false,
+	"hideOldModels": true,
+	"keepVersions": 1,
+	"keepAlways": [
+		"anthropic/claude-sonnet-4-5"
+	]
 }

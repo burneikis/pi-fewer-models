@@ -1,5 +1,5 @@
 import { CONFIG_DIR_NAME, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type FewerModelsConfig, isModelKept, loadConfig } from "./config.ts";
+import { type FewerModelsConfig, isModelKept, loadConfig, pruneOldModels } from "./config.ts";
 
 interface CatalogueModel {
 	id: string;
@@ -69,13 +69,17 @@ export default function (pi: ExtensionAPI) {
 				continue;
 			}
 
-			const survivors = models.filter((model) => {
-				const isActive =
-					config.keepCurrentModel !== false && active?.provider === provider && active?.id === model.id;
-				if (isActive) return true;
+			const isActive = (model: CatalogueModel) =>
+				config.keepCurrentModel !== false && active?.provider === provider && active?.id === model.id;
+
+			const matched = models.filter((model) => {
+				if (isActive(model)) return true;
 				if (config.requireAuth && !ctx.modelRegistry.hasConfiguredAuth(model as never)) return false;
 				return isModelKept(model, config);
 			});
+
+			const pruned = pruneOldModels(matched, config);
+			const survivors = pruned.length === matched.length ? matched : matched.filter((model) => pruned.includes(model) || isActive(model));
 
 			kept += survivors.length;
 			if (survivors.length === models.length) continue;
