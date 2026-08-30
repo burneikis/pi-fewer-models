@@ -132,21 +132,54 @@ interface ParsedModelId {
 	dated: boolean;
 }
 
+/** `20251001`, `2025-10-01` and `2025_10_01` all mark a dated release. */
+const DATE_PATTERN = /(?:^|(?<=[-_\s]))(?:\d{4}[-_]\d{2}[-_]\d{2}|\d{6,})(?=$|[-_\s])/g;
+/** `4`, `v4`, `4.1` */
+const VERSION_PATTERN = /^v?(\d+(?:\.\d+)*)$/i;
+/** `4o`, `4.1o` - a version with a letter suffix that belongs to the family. */
+const VERSION_THEN_WORD_PATTERN = /^v?(\d+(?:\.\d+)*)([a-z]+)$/i;
+/** `o1`, `o3` - a family prefix glued to its version. */
+const WORD_THEN_VERSION_PATTERN = /^([a-z]+)(\d+(?:\.\d+)*)$/i;
+
 /** Split a model id into a family name, a version tuple, and a date marker. */
 export function parseModelId(id: string): ParsedModelId {
 	const words: string[] = [];
 	const version: number[] = [];
 	let dated = false;
 
-	for (const token of id.split(/[-_\s]+/)) {
-		if (/^\d{6,}$/.test(token)) {
-			dated = true;
+	// Strip dates first: `2024-05-13` must not be read as version 2024.5.13.
+	const undated = id.replace(DATE_PATTERN, () => {
+		dated = true;
+		return "";
+	});
+
+	const pushVersion = (value: string) => {
+		for (const part of value.split(".")) version.push(Number(part));
+	};
+
+	for (const token of undated.split(/[-_\s]+/)) {
+		if (token === "") continue;
+
+		const plain = VERSION_PATTERN.exec(token);
+		if (plain) {
+			pushVersion(plain[1]);
 			continue;
 		}
-		if (/^v?\d+(\.\d+)*$/i.test(token)) {
-			for (const part of token.replace(/^v/i, "").split(".")) version.push(Number(part));
+
+		const suffixed = VERSION_THEN_WORD_PATTERN.exec(token);
+		if (suffixed) {
+			pushVersion(suffixed[1]);
+			words.push(suffixed[2].toLowerCase());
 			continue;
 		}
+
+		const prefixed = WORD_THEN_VERSION_PATTERN.exec(token);
+		if (prefixed) {
+			words.push(prefixed[1].toLowerCase());
+			pushVersion(prefixed[2]);
+			continue;
+		}
+
 		words.push(token.toLowerCase());
 	}
 
