@@ -5,7 +5,7 @@
 	"license": "MIT",
 	"type": "module",
 	"pi": {
-		"extensions": ["./src/index.ts"]
+		"extensions": ["./index.ts"]
 	},
-	"files": ["src"]
+	"files": ["index.ts", "src"]
 }
